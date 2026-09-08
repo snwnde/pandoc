@@ -587,10 +587,16 @@ peekTok = do
 doMacros :: PandocMonad m => LP m ()
 doMacros = do
   TokStream macrosExpanded toks <- getInput
-  unless macrosExpanded $ do
-    st <- getState
-    unless (sVerbatimMode st) $
-      doMacros' 1 toks >>= setInput . TokStream True
+  unless macrosExpanded $
+    case toks of
+      -- only a control sequence at the head of the stream can
+      -- trigger macro expansion; in other cases we skip the
+      -- state update:
+      Tok _ (CtrlSeq _) _ : _ -> do
+        st <- getState
+        unless (sVerbatimMode st) $
+          doMacros' 1 toks >>= setInput . TokStream True
+      _ -> return ()
 
 doMacros' :: PandocMonad m => Int -> [Tok] -> LP m [Tok]
 doMacros' n inp =
