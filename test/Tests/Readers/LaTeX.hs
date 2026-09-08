@@ -250,6 +250,10 @@ tests = [ testGroup "basic"
             mconcat ["^^" <> T.pack [i] | i <- hex] =?>
             para (str $ T.pack $ ['p'..'y']++['!'..'&'])
           ]
+        , testGroup "symbol commands"
+          [ "qed" =:
+            "A\\qed" =?> para (str "A\xa0\x25FB")
+          ]
         , testGroup "memoir scene breaks"
           [ "plainbreak" =:
             "hello\\plainbreak{2}goodbye" =?>
