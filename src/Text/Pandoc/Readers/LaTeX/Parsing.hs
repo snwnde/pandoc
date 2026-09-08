@@ -579,7 +579,10 @@ satisfyTok f = do
 peekTok :: PandocMonad m => LP m Tok
 peekTok = do
   doMacros
-  lookAhead (satisfyTok (const True))
+  TokStream _ toks <- getInput
+  case toks of
+    t : _ -> return t
+    []    -> mzero
 
 doMacros :: PandocMonad m => LP m ()
 doMacros = do
