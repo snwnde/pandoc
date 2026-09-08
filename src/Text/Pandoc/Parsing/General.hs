@@ -128,8 +128,6 @@ import Text.Parsec
   , setInput
   , setPosition
   , skipMany
-  , sourceColumn
-  , sourceName
   , tokenPrim
   , try
   , unexpected
