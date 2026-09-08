@@ -1328,10 +1328,7 @@ bracedUrl = braced' (retokenizeComment >> anyTok)
 retokenizeComment :: PandocMonad m => LP m ()
 retokenizeComment = (do
   Tok pos Comment txt <- satisfyTok isCommentTok
-  let updPos (Tok pos' toktype' txt') =
-        Tok (incSourceColumn (incSourceLine pos' (sourceLine pos - 1))
-             (sourceColumn pos)) toktype' txt'
-  let newtoks = map updPos $ tokenize pos $ T.tail txt
+  let newtoks = tokenize (incSourceColumn pos 1) $ T.tail txt
   TokStream macrosExpanded ts <- getInput
   setInput $ TokStream macrosExpanded ((Tok pos Symbol "%" : newtoks) ++ ts))
     <|> return ()
