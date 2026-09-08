@@ -262,6 +262,20 @@ tests = [ testGroup "basic"
             "\\newif\\foobar\\foobar hi\\fi" =?>
             para (str "hi")
           ]
+        , testGroup "conditionals"
+          [ "unknown conditional nested in skipped branch" =:
+            "\\iffalse X\\ifdim\\wd0>0pt Y\\fi Z\\fi W" =?>
+            para "W"
+          , "nested conditionals with else branches" =:
+            "\\iftrue A\\iffalse B\\else C\\fi D\\else E\\fi F" =?>
+            para "ACDF"
+          , "newif conditional nested in skipped branch" =:
+            "\\newif\\iffoo\\iffalse x\\iffoo y\\fi z\\fi w" =?>
+            para "w"
+          , "nested conditional in else branch" =:
+            "\\iffalse a\\else b\\iffalse c\\else d\\fi e\\fi f" =?>
+            para "bdef"
+          ]
         , testGroup "ligatures"
           [ "quote ligatures in normal text" =:
             "it's ``x'' `y'" =?>

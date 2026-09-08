@@ -810,11 +810,11 @@ trySpecialMacro "xspace" ts = do
     Tok pos Word t : _
       | startsWithAlphaNum t -> return $ Tok pos Spaces " " : ts'
     _ -> return ts'
-trySpecialMacro "iftrue" ts = handleIf (ifParser True) ts
-trySpecialMacro "iffalse" ts = handleIf (ifParser False) ts
+trySpecialMacro "iftrue" ts = doIf True ts
+trySpecialMacro "iffalse" ts = doIf False ts
 trySpecialMacro "ifmmode" ts = do
   mathMode <- sMathMode <$> getState
-  handleIf (ifParser mathMode) ts
+  doIf mathMode ts
 trySpecialMacro "ifstrequal" ts = do
   handleIf ifStrequalParser ts
 -- xparse (LaTeX3) argument conditionals:
@@ -957,14 +957,67 @@ handleIf parser ts = do
     Left _ -> Prelude.fail "Could not parse conditional"
     Right ts' -> return ts'
 
-ifParser :: PandocMonad m => Bool -> LP m [Tok]
-ifParser b = do
-  ifToks <- many (notFollowedBy (controlSeq "else" <|> controlSeq "fi")
-                    *> anyTok)
-  elseToks <- (controlSeq "else" >> manyTill anyTok (controlSeq "fi"))
-                 <|> ([] <$ controlSeq "fi")
-  TokStream _ rest <- getInput
-  return $ (if b then ifToks else elseToks) ++ rest
+-- | Names of TeX's primitive conditionals.  While scanning for the
+-- @\\else@ or @\\fi@ that ends a conditional branch, we need to
+-- know which control sequences begin a conditional, so that the
+-- @\\else@ and @\\fi@ belonging to nested conditionals are not
+-- mistaken for the end of the current one.
+primitiveConditionalNames :: Set.Set Text
+primitiveConditionalNames = Set.fromList
+  [ "if", "ifcase", "ifcat", "ifcsname", "ifdefined", "ifdim"
+  , "ifeof", "iffalse", "iffontchar", "ifhbox", "ifhmode"
+  , "ifincsname", "ifinner", "ifmmode", "ifnum", "ifodd", "iftrue"
+  , "ifvbox", "ifvmode", "ifvoid", "ifx" ]
+
+-- | Handle a conditional like @\\iftrue@: select the branch before
+-- @\\else@ (or @\\fi@) if the Bool is True, the else branch
+-- otherwise.  The unselected branch is skipped without expansion
+-- (as TeX does), keeping nested conditionals balanced.
+doIf :: PandocMonad m => Bool -> [Tok] -> LP m [Tok]
+doIf b ts = do
+  macros <- sMacros <$> getState
+  -- Conditionals defined with \newif (or \let from a primitive
+  -- conditional) expand to a single conditional token; TeX
+  -- recognizes these too when skipping conditional text.
+  let isConditionalMacro (Macro _ _ [] Nothing [Tok _ (CtrlSeq n) _]) =
+        n `Set.member` primitiveConditionalNames
+      isConditionalMacro _ = False
+  let conditionals = foldr
+        (\m s -> M.foldrWithKey
+           (\k v s' -> if isConditionalMacro v
+                          then Set.insert k s'
+                          else s')
+           s m)
+        primitiveConditionalNames macros
+  case splitConditional conditionals ts of
+    Just (ifToks, elseToks, rest) ->
+      return $ (if b then ifToks else elseToks) ++ rest
+    Nothing -> Prelude.fail "Could not parse conditional"
+
+-- | Split the tokens following a conditional into the tokens
+-- before @\\else@ (or @\\fi@), the tokens of the else branch (if
+-- any), and the tokens after the matching @\\fi@.  Returns Nothing
+-- if there is no matching @\\fi@.
+splitConditional :: Set.Set Text -> [Tok] -> Maybe ([Tok], [Tok], [Tok])
+splitConditional conditionals = goIf (0 :: Int) id
+ where
+  goIf _ _ [] = Nothing
+  goIf depth acc (t@(Tok _ (CtrlSeq name) _) : rest)
+    | name == "fi"
+    , depth == 0 = Just (acc [], [], rest)
+    | name == "fi" = goIf (depth - 1) (acc . (t:)) rest
+    | name == "else"
+    , depth == 0 = goElse (acc []) (0 :: Int) id rest
+    | name `Set.member` conditionals = goIf (depth + 1) (acc . (t:)) rest
+  goIf depth acc (t : rest) = goIf depth (acc . (t:)) rest
+  goElse _ _ _ [] = Nothing
+  goElse ifToks depth acc (t@(Tok _ (CtrlSeq name) _) : rest)
+    | name == "fi"
+    , depth == 0 = Just (ifToks, acc [], rest)
+    | name == "fi" = goElse ifToks (depth - 1) (acc . (t:)) rest
+    | name `Set.member` conditionals =
+        goElse ifToks (depth + 1) (acc . (t:)) rest
+  goElse ifToks depth acc (t : rest) = goElse ifToks depth (acc . (t:)) rest
 
 -- | Handle a LaTeX3 expandable evaluator (@\inteval@, @\fpeval@,
 -- ...): grab the braced argument (macros in it are expanded as it
