@@ -25,6 +25,9 @@ module Text.Pandoc.Readers.LaTeX.Parsing
   , LaTeXState(..)
   , defaultLaTeXState
   , LP
+  , LaTeXEnv(..)
+  , emptyLaTeXEnv
+  , askEnv
   , TokStream(..)
   , withVerbatimMode
   , rawLaTeXParser
@@ -98,6 +101,7 @@ module Text.Pandoc.Readers.LaTeX.Parsing
 import Control.Applicative (many, (<|>))
 import Control.Monad
 import Control.Monad.Except (throwError)
+import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Control.Monad.Trans (lift)
 import Data.Char (chr, isAlphaNum, isDigit, isLetter, ord)
 import Data.Default
@@ -281,7 +285,26 @@ instance Monad m => Stream TokStream m Tok where
   uncons (TokStream _ []) = return Nothing
   uncons (TokStream _ (t:ts)) = return $ Just (t, TokStream False ts)
 
-type LP m = ParsecT TokStream LaTeXState m
+type LP m = ParsecT TokStream LaTeXState (ReaderT (LaTeXEnv m) m)
+
+-- | Environment holding the command dispatch tables.  Because these
+-- tables have types that mention the parser monad, they cannot be
+-- top-level constants; passing them in a reader environment ensures
+-- they are constructed once per parse rather than once per use.
+data LaTeXEnv m = LaTeXEnv
+  { envInlineCommands :: M.Map Text (LP m Inlines)
+  , envBlockCommands  :: M.Map Text (LP m Blocks)
+  , envEnvironments   :: M.Map Text (LP m Blocks)
+  }
+
+-- | An environment with empty dispatch tables, for running parsers
+-- that do not consult them.
+emptyLaTeXEnv :: LaTeXEnv m
+emptyLaTeXEnv = LaTeXEnv mempty mempty mempty
+
+-- | Retrieve the command dispatch tables.
+askEnv :: Monad m => LP m (LaTeXEnv m)
+askEnv = lift ask
 
 withVerbatimMode :: PandocMonad m => LP m a -> LP m a
 withVerbatimMode parser = do
@@ -295,9 +318,9 @@ withVerbatimMode parser = do
        return result
 
 rawLaTeXParser :: (PandocMonad m, HasMacros s, HasReaderOptions s, Show a)
-               => [Tok] -> LP m () -> LP m a
+               => LaTeXEnv m -> [Tok] -> LP m () -> LP m a
                -> ParsecT Sources s m (a, Text)
-rawLaTeXParser toks parser valParser = do
+rawLaTeXParser lenv toks parser valParser = do
   pstate <- getState
   let lstate = def{ sOptions = extractReaderOptions pstate }
   let lstate' = lstate { sMacros = extractMacros pstate :| [] }
@@ -306,12 +329,14 @@ rawLaTeXParser toks parser valParser = do
                       _ -> return ()
   let preparser = setStartPos >> parser
   let rawparser = (,) <$> withRaw valParser <*> getState
-  res' <- lift $ runParserT (withRaw (preparser >> getPosition))
+  res' <- lift $ flip runReaderT lenv $
+                 runParserT (withRaw (preparser >> getPosition))
                             lstate "chunk" $ TokStream False toks
   case res' of
        Left _    -> mzero
        Right (endpos, toks') -> do
-         res <- lift $ runParserT rawparser lstate' "chunk"
+         res <- lift $ flip runReaderT lenv $
+                       runParserT rawparser lstate' "chunk"
                      $ TokStream False toks'
          case res of
               Left _    -> mzero
@@ -342,7 +367,8 @@ applyMacros s = (guardDisabled Ext_latex_macros >> return s) <|>
       pstate <- getState
       let lstate = def{ sOptions = extractReaderOptions pstate
                       , sMacros  = extractMacros pstate :| [] }
-      res <- runParserT retokenize lstate "math" $
+      res <- flip runReaderT emptyLaTeXEnv $
+                 runParserT retokenize lstate "math" $
                  TokStream False (tokenize (initialPos "math") s)
       case res of
            Left e   -> Prelude.fail (show e)
