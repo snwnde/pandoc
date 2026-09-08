@@ -25,7 +25,6 @@ import Control.Applicative (many, optional, (<|>))
 import Control.Monad
 import Control.Monad.Except (throwError)
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.Trans (lift)
 import Data.Containers.ListUtils (nubOrd)
 import Data.Char (isDigit, isLetter, isAlphaNum, toUpper, chr)
 import Data.Default
@@ -862,13 +861,10 @@ inlines = mconcat <$> many inline
 opt :: PandocMonad m => LP m Inlines
 opt = do
   toks <- try (sp *> bracketedToks <* sp)
-  -- now parse the toks as inlines
-  st <- getState
-  parsed <- lift $ runParserT (mconcat <$> many inline) st "bracketed option"
-              (TokStream False toks)
-  case parsed of
-    Right result -> return result
-    Left e       -> throwError $ fromParsecError (toSources toks) e
+  -- now parse the toks as inlines; parseFromToks preserves any
+  -- state changes (e.g. macro definitions), since an optional
+  -- argument is not a TeX group
+  parseFromToks (mconcat <$> many inline) toks
 
 -- block elements:
 
