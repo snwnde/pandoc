@@ -343,15 +343,16 @@ tok :: PandocMonad m => LP m Inlines
 tok = tokWith inline
 
 unescapeURL :: Text -> Text
-unescapeURL = T.concat . go . T.splitOn "\\"
-  where
-    isEscapable c = T.any (== c) "#$%&~_^\\{}"
-    go (x:xs) = x : map unescapeInterior xs
-    go []     = []
-    unescapeInterior t
-      | Just (c, _) <- T.uncons t
-      , isEscapable c = t
-      | otherwise = "\\" <> t
+unescapeURL t =
+  let (xs, ys) = T.break (== '\\') t
+  in case T.uncons ys of
+       Nothing -> xs
+       Just (_, rest) ->
+         case T.uncons rest of
+           Just (c, rest')
+             | isEscapable c -> xs <> T.cons c (unescapeURL rest')
+           _ -> xs <> "\\" <> unescapeURL rest
+  where isEscapable c = T.any (== c) "#$%&~_^\\{}"
 
 inlineCommands :: PandocMonad m => M.Map Text (LP m Inlines)
 inlineCommands = M.unions

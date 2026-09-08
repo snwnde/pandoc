@@ -254,6 +254,16 @@ tests = [ testGroup "basic"
           [ "qed" =:
             "A\\qed" =?> para (str "A\xa0\x25FB")
           ]
+        , testGroup "urls"
+          [ "url with escaped %" =:
+            "\\url{http://example.com/a\\%b}" =?>
+            para (linkWith ("",["uri"],[]) "http://example.com/a%b" ""
+                   (str "http://example.com/a%b"))
+          , "url with escaped backslash" =:
+            "\\url{http://example.com/a\\\\b}" =?>
+            para (linkWith ("",["uri"],[]) "http://example.com/a\\b" ""
+                   (str "http://example.com/a\\b"))
+          ]
         , testGroup "memoir scene breaks"
           [ "plainbreak" =:
             "hello\\plainbreak{2}goodbye" =?>
