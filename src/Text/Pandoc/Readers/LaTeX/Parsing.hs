@@ -103,7 +103,6 @@ import Data.Char (chr, isAlphaNum, isDigit, isLetter, ord)
 import Data.Default
 import Data.List (dropWhileEnd, intercalate, isSuffixOf, unfoldr)
 import Numeric (showEFloat, showFFloat)
-import qualified Data.IntMap as IntMap
 import qualified Data.Map as M
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -114,7 +113,7 @@ import qualified Data.Text as T
 import Text.Pandoc.Builder
 import Text.Pandoc.Class.PandocMonad (PandocMonad, report)
 import Text.Pandoc.Error
-         (PandocError (PandocMacroLoop,PandocShouldNeverHappenError))
+         (PandocError (PandocMacroLoop))
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
@@ -176,7 +175,14 @@ data LaTeXState = LaTeXState{ sOptions       :: ReaderOptions
                             , sToggles       :: M.Map Text Bool
                             , sFileContents  :: M.Map Text Text
                             , sEnableWithRaw :: Bool
-                            , sRawTokens     :: IntMap.IntMap [Tok]
+                            , sRawTokens     :: [Tok]
+                              -- ^ reversed list of tokens consumed
+                              -- while at least one withRaw scope is
+                              -- active
+                            , sRawTokenCount :: !Int
+                              -- ^ length of sRawTokens
+                            , sRawScopes     :: !Int
+                              -- ^ number of active withRaw scopes
                             , sLigatures     :: Bool
                             , sCaseExclusions :: M.Map Text (Set.Set Text)
                               -- ^ words excluded from case changing
@@ -210,7 +216,9 @@ defaultLaTeXState = LaTeXState{ sOptions       = def
                               , sToggles       = M.empty
                               , sFileContents  = M.empty
                               , sEnableWithRaw = True
-                              , sRawTokens     = IntMap.empty
+                              , sRawTokens     = []
+                              , sRawTokenCount = 0
+                              , sRawScopes     = 0
                               , sLigatures     = True
                               , sCaseExclusions = M.empty
                               }
@@ -529,11 +537,15 @@ parseFromToks parser toks = do
   case toks of
      Tok pos _ _ : _ -> setPosition pos
      _ -> return ()
-  -- we ignore existing raw tokens maps (see #9517)
-  oldRawTokens <- sRawTokens <$> getState
-  updateState $ \st -> st{ sRawTokens = mempty }
+  -- we ignore existing raw token accumulation (see #9517)
+  oldst <- getState
+  updateState $ \st -> st{ sRawTokens = []
+                         , sRawTokenCount = 0
+                         , sRawScopes = 0 }
   result <- parser
-  updateState $ \st -> st{ sRawTokens = oldRawTokens }
+  updateState $ \st -> st{ sRawTokens = sRawTokens oldst
+                         , sRawTokenCount = sRawTokenCount oldst
+                         , sRawScopes = sRawScopes oldst }
   setInput oldInput
   setPosition oldpos
   return result
@@ -551,10 +563,9 @@ satisfyTok f = do
     doMacros -- apply macros on remaining input stream
     res <- tokenPrim (T.unpack . untoken) updatePos matcher
     updateState $ \st ->
-      if sEnableWithRaw st
-         then
-           let !newraws = IntMap.map (res:) $! sRawTokens st
-            in  st{ sRawTokens = newraws }
+      if sRawScopes st > 0 && sEnableWithRaw st
+         then st{ sRawTokens = res : sRawTokens st
+                , sRawTokenCount = sRawTokenCount st + 1 }
          else st
     return $! res
   where matcher t | f t       = Just t
@@ -1547,23 +1558,16 @@ ignore raw = do
 
 withRaw :: PandocMonad m => LP m a -> LP m (a, [Tok])
 withRaw parser = do
-  rawTokensMap <- sRawTokens <$> getState
-  let key = case IntMap.lookupMax rawTokensMap of
-               Nothing     -> 0
-               Just (n,_)  -> n + 1
-  -- insert empty list at key
-  updateState $ \st -> st{ sRawTokens =
-                             IntMap.insert key [] $ sRawTokens st }
+  startCount <- sRawTokenCount <$> getState
+  updateState $ \st -> st{ sRawScopes = sRawScopes st + 1 }
   result <- parser
-  mbRevToks <- IntMap.lookup key . sRawTokens <$> getState
-  raw <- case mbRevToks of
-           Just revtoks -> do
-             updateState $ \st -> st{ sRawTokens =
-                                        IntMap.delete key $ sRawTokens st}
-             return $ reverse revtoks
-           Nothing      ->
-             throwError $ PandocShouldNeverHappenError $
-                "sRawTokens has nothing at key " <> T.pack (show key)
+  st <- getState
+  let raw = reverse $ take (sRawTokenCount st - startCount) (sRawTokens st)
+  setState $ if sRawScopes st <= 1
+                then st{ sRawScopes = 0
+                       , sRawTokens = []
+                       , sRawTokenCount = 0 }
+                else st{ sRawScopes = sRawScopes st - 1 }
   return (result, raw)
 
 keyval :: PandocMonad m => LP m (Text, Text)
