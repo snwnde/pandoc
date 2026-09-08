@@ -254,6 +254,14 @@ tests = [ testGroup "basic"
           [ "qed" =:
             "A\\qed" =?> para (str "A\xa0\x25FB")
           ]
+        , testGroup "newif"
+          [ "newif defines conditional" =:
+            "\\newif\\iffoo\\footrue\\iffoo yes\\fi" =?>
+            para (str "yes")
+          , "newif requires name starting with if" =:
+            "\\newif\\foobar\\foobar hi\\fi" =?>
+            para (str "hi")
+          ]
         , testGroup "urls"
           [ "url with escaped %" =:
             "\\url{http://example.com/a\\%b}" =?>

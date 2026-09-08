@@ -12,6 +12,7 @@ import Text.Pandoc.Shared (safeRead)
 import Text.Pandoc.Parsing hiding (blankline, mathDisplay, mathInline,
                             optional, space, spaces, withRaw, (<|>))
 import Control.Applicative ((<|>), optional)
+import Control.Monad (guard)
 import Data.Char (chr, isLetter, ord)
 import qualified Data.Map as M
 import Data.Text (Text)
@@ -118,10 +119,11 @@ defmacro = do
 -- \footrue to be a command that defines \iffoo to be \iftrue
 -- \foofalse to be a command that defines \iffoo to be \iffalse
 newif :: PandocMonad m => LP m [(Text, Macro)]
-newif = do
+newif = try $ do
   controlSeq "newif"
   withVerbatimMode $ do
     Tok pos (CtrlSeq name) _ <- anyControlSeq
+    guard $ "if" `T.isPrefixOf` name
     -- \def\iffoo\iffalse
     -- \def\footrue{\def\iffoo\iftrue}
     -- \def\foofalse{\def\iffoo\iffalse}
