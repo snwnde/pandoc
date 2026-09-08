@@ -64,7 +64,6 @@ where
 
 import Control.Monad
   ( join
-  , liftM
   , unless
   , void
   , when
@@ -151,7 +150,7 @@ import qualified Data.Bifunctor as Bifunctor
 -- | Remove whitespace from start and end; just like @'trimInlines'@,
 -- but lifted into the 'Future' type.
 trimInlinesF :: Future s Inlines -> Future s Inlines
-trimInlinesF = liftM trimInlines
+trimInlinesF = fmap trimInlines
 
 -- | Like @count@, but packs its result
 countChar :: (Stream s m Char, UpdateSourcePos s Char, Monad m)
