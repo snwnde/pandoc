@@ -262,6 +262,15 @@ tests = [ testGroup "basic"
             "\\newif\\foobar\\foobar hi\\fi" =?>
             para (str "hi")
           ]
+        , testGroup "ligatures"
+          [ "quote ligatures in normal text" =:
+            "it's ``x'' `y'" =?>
+            para ("it\8217s " <> doubleQuoted "x" <> " " <> singleQuoted "y")
+          , "apostrophe in texttt stays ASCII" =:
+            "\\texttt{it's}" =?> para (code "it's")
+          , "backtick in texttt stays ASCII" =:
+            "\\texttt{`x'}" =?> para (code "`x'")
+          ]
         , testGroup "urls"
           [ "url with escaped %" =:
             "\\url{http://example.com/a\\%b}" =?>

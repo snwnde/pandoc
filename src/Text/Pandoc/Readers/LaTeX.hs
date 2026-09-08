@@ -823,13 +823,16 @@ inline = do
                 -> eatOneToken *>
                     option (str "-") (symbol '-' *>
                       option (str "–") (str "—" <$ symbol '-'))
-        "'"     -> eatOneToken *>
-                    option (str "’") (str  "”" <$ (guard ligatures *> symbol '\''))
+        "'" | ligatures
+                -> eatOneToken *>
+                    option (str "’") (str "”" <$ symbol '\'')
+            | otherwise
+                -> symbolAsString
         "~"     -> str "\160" <$ eatOneToken
         "`" | ligatures
                 -> doubleQuote <|> singleQuote <|> (str "‘" <$ symbol '`')
             | otherwise
-                -> str "‘" <$ symbol '`'
+                -> symbolAsString
         "\"" | ligatures
                 -> doubleQuote <|> singleQuote <|> symbolAsString
         "“"     -> doubleQuote <|> symbolAsString
