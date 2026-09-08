@@ -513,21 +513,23 @@ isLowerHex :: Char -> Bool
 isLowerHex x = x >= '0' && x <= '9' || x >= 'a' && x <= 'f'
 
 untokenize :: [Tok] -> Text
-untokenize = foldr untokenAccum mempty
-
-untokenAccum :: Tok -> Text -> Text
-untokenAccum (Tok _ (CtrlSeq _) t) accum =
-  -- insert space to prevent breaking a control sequence; see #5836
-  case (T.unsnoc t, T.uncons accum) of
-    (Just (_,c), Just (d,_))
-      | isLetter c
-      , isLetter d
-      -> t <> " " <> accum
-    _ -> t <> accum
-untokenAccum (Tok _ _ t) accum = t <> accum
+untokenize = T.concat . go
+  where
+    go [] = []
+    go (Tok _ (CtrlSeq _) t : ts)
+      -- insert space to prevent breaking a control sequence; see #5836
+      | Just (_, c) <- T.unsnoc t
+      , isLetter c
+      , nextStartsWithLetter ts = t : " " : go ts
+    go (Tok _ _ t : ts) = t : go ts
+    nextStartsWithLetter (Tok _ _ t : ts) =
+      case T.uncons t of
+        Just (d, _) -> isLetter d
+        Nothing     -> nextStartsWithLetter ts
+    nextStartsWithLetter [] = False
 
 untoken :: Tok -> Text
-untoken t = untokenAccum t mempty
+untoken (Tok _ _ t) = t
 
 parseFromToks :: PandocMonad m => LP m a -> [Tok] -> LP m a
 parseFromToks parser toks = do
