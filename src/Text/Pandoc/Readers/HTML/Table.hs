@@ -285,7 +285,9 @@ normalizeColWidths ncols tblType = \case
   [] -> case tblType of
           SimpleTable -> replicate ncols ColWidthDefault
           NormalTable -> replicate ncols (ColWidth $ 1 / fromIntegral ncols)
-  widths -> widths
+  -- pad if fewer <col> elements than columns, so that cells in the
+  -- extra columns aren't lost (the colspecs are zipped with alignments):
+  widths -> widths ++ replicate (ncols - length widths) ColWidthDefault
 
 calculateAlignments :: Int -> [TableBody] -> [Alignment]
 calculateAlignments cols tbodies =
