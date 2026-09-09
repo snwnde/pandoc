@@ -33,7 +33,7 @@ import Text.Pandoc.Options (ReaderOptions)
 import Text.Pandoc.Parsing
   ( HasIdentifierList (..), HasLastStrPosition (..), HasLogMessages (..)
   , HasMacros (..), HasQuoteContext (..), HasReaderOptions (..)
-  , ParsecT, ParserState, QuoteContext (NoQuote)
+  , ParsecT, ParserState, QuoteContext (NoQuote), SourcePos
   )
 import Text.Pandoc.TeX (Macro)
 
@@ -47,6 +47,7 @@ type TagParser m = HTMLParser m [Tag Text]
 data HTMLState = HTMLState
   { parserState :: ParserState
   , noteTable   :: Map Text Blocks
+  , noteRefPos  :: Map Text SourcePos -- ^ position of first ref to each note
   , baseHref    :: Maybe URI
   , identifiers :: Set Text
   , logMessages :: [LogMessage]

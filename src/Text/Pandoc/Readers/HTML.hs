@@ -92,7 +92,7 @@ readHtml opts inp = do
   result <- flip runReaderT def $
        runParserT parseDoc
        (HTMLState def{ stateOptions = opts }
-         M.empty Nothing Set.empty [] M.empty opts False False)
+         M.empty M.empty Nothing Set.empty [] M.empty opts False False)
        "source" tags
   case result of
     Right doc -> return doc
@@ -132,7 +132,9 @@ replaceNotes' noteTbl (RawInline (Format "noteref") ref) =
   maybe warnNotFound (pure . Note . B.toList) $ M.lookup ref noteTbl
  where
   warnNotFound = do
-    pos <- getPosition
+    -- use the position of the noteref, if we recorded one; the
+    -- current position is at the end of the document by now:
+    pos <- M.lookup ref . noteRefPos <$> getState >>= maybe getPosition pure
     logMessage $ ReferenceNotFound ref pos
     pure (Note [])
 replaceNotes' _ x = pure x
@@ -331,6 +333,9 @@ eNoteref = try $ do
   ident <- case lookup "href" attr >>= T.uncons of
              Just ('#', rest) -> return rest
              _ -> mzero
+  pos <- getPosition
+  updateState $ \s ->
+    s{ noteRefPos = M.insertWith (\_new old -> old) ident pos (noteRefPos s) }
   _ <- manyTill pAny (pSatisfy (\case
                                    TagClose t -> t == tag
                                    _          -> False))
