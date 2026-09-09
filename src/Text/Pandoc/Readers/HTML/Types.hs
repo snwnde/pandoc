@@ -46,7 +46,7 @@ type TagParser m = HTMLParser m [Tag Text]
 -- | Global HTML parser state
 data HTMLState = HTMLState
   { parserState :: ParserState
-  , noteTable   :: [(Text, Blocks)]
+  , noteTable   :: Map Text Blocks
   , baseHref    :: Maybe URI
   , identifiers :: Set Text
   , logMessages :: [LogMessage]

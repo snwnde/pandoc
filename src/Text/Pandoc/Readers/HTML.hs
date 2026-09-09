@@ -92,7 +92,7 @@ readHtml opts inp = do
   result <- flip runReaderT def $
        runParserT parseDoc
        (HTMLState def{ stateOptions = opts }
-         [] Nothing Set.empty [] M.empty opts False False)
+         M.empty Nothing Set.empty [] M.empty opts False False)
        "source" tags
   case result of
     Right doc -> return doc
@@ -127,9 +127,9 @@ replaceNotes bs = do
   walkM (replaceNotes' notes) bs
 
 replaceNotes' :: PandocMonad m
-              => [(Text, Blocks)] -> Inline -> TagParser m Inline
+              => M.Map Text Blocks -> Inline -> TagParser m Inline
 replaceNotes' noteTbl (RawInline (Format "noteref") ref) =
-  maybe warnNotFound (pure . Note . B.toList) $ lookup ref noteTbl
+  maybe warnNotFound (pure . Note . B.toList) $ M.lookup ref noteTbl
  where
   warnNotFound = do
     pos <- getPosition
@@ -298,7 +298,7 @@ eFootnote = do
   let ident = fromMaybe "" (lookup "id" attr)
   content <- pInTags tag block
   updateState $ \s ->
-    s {noteTable = (ident, content) : noteTable s}
+    s {noteTable = M.insert ident content (noteTable s)}
 
 eFootnotes :: PandocMonad m => TagParser m Blocks
 eFootnotes = try $ do
