@@ -76,7 +76,17 @@ readHtml :: (PandocMonad m, ToSources a)
          => ReaderOptions -- ^ Reader options
          -> a             -- ^ Input to parse
          -> m Pandoc
-readHtml opts inp = do
+readHtml = readHtmlWithDepth 0
+
+-- Like 'readHtml', but starting at the given iframe nesting depth.
+-- Used to limit recursion when the contents of iframes are fetched
+-- and parsed (see pIframe).
+readHtmlWithDepth :: (PandocMonad m, ToSources a)
+                  => Int
+                  -> ReaderOptions
+                  -> a
+                  -> m Pandoc
+readHtmlWithDepth depth opts inp = do
   let tags = stripPrefixes $ canonicalizeTags $
              parseTagsOptions parseOptions{ optTagPosition = True }
              (sourcesToText $ toSources inp)
@@ -92,7 +102,7 @@ readHtml opts inp = do
   result <- flip runReaderT def $
        runParserT parseDoc
        (HTMLState def{ stateOptions = opts }
-         M.empty M.empty Nothing Set.empty [] M.empty opts False False)
+         M.empty M.empty Nothing Set.empty [] M.empty opts False False depth)
        "source" tags
   case result of
     Right doc -> return doc
@@ -530,7 +540,10 @@ pIframe = try $ do
   skipMany pBlank
   pCloses "iframe" <|> eof
   url <- canonicalizeUrl $ fromAttrib "src" tag
-  if T.null url
+  depth <- iframeDepth <$> getState
+  -- limit nesting depth, since iframes that (indirectly) embed
+  -- themselves would otherwise cause infinite recursion:
+  if T.null url || depth >= maxIframeDepth
      then ignore $ renderTags' [tag, TagClose "iframe"]
      else catchError
        (do (bs, mbMime) <- openURL url
@@ -539,7 +552,7 @@ pIframe = try $ do
                | "text/html" `T.isPrefixOf` mt -> do
                     let inp = UTF8.toText bs
                     opts <- readerOpts <$> getState
-                    Pandoc _ contents <- readHtml opts inp
+                    Pandoc _ contents <- readHtmlWithDepth (depth + 1) opts inp
                     return $ B.divWith ("",["iframe"],[]) $ B.fromList contents
                | "image/" `T.isPrefixOf` mt -> do
                     return $ B.divWith ("",["iframe"],[]) $
@@ -548,6 +561,9 @@ pIframe = try $ do
        (\e -> do
          logMessage $ CouldNotFetchResource url (renderError e)
          ignore $ renderTags' [tag, TagClose "iframe"])
+
+maxIframeDepth :: Int
+maxIframeDepth = 5
 
 pRawHtmlBlock :: PandocMonad m => TagParser m Blocks
 pRawHtmlBlock = do

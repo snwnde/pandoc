@@ -55,6 +55,7 @@ data HTMLState = HTMLState
   , readerOpts  :: ReaderOptions
   , inFootnotes :: Bool
   , inPre       :: Bool
+  , iframeDepth :: Int -- ^ how many iframes deep we are (recursion limit)
   }
 
 -- | Local HTML parser state
