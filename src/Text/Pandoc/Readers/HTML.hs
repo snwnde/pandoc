@@ -1213,12 +1213,19 @@ htmlTag f = try $ do
   let ts = canonicalizeTags $ parseTagsOptions
                                parseOptions{ optTagWarning = False
                                            , optTagPosition = True }
-                               (inp <> " ")
-                               -- add space to ensure that
-                               -- we get a TagPosition after the tag
+                               inp
+  -- if the tag is the last token, there is no TagPosition after it;
+  -- in that case its end is the end of the input (positions are 1-based).
+  -- (Note: only computed when needed, to avoid a scan of the input.)
+  let endOfInput = (T.count "\n" inp + 1,
+                    T.length (T.takeWhileEnd (/= '\n') inp) + 1)
   (next, ln, col) <- case ts of
-                      (TagPosition{} : next : TagPosition ln col : _)
-                        | f next -> return (next, ln, col)
+                      (TagPosition{} : next : rest)
+                        | f next ->
+                           case dropWhile (not . isTagPosition) rest of
+                             TagPosition ln col : _ -> return (next, ln, col)
+                             _ -> let (ln, col) = endOfInput
+                                  in return (next, ln, col)
                       _ -> mzero
 
   -- <www.boe.es/buscar/act.php?id=BOE-A-1996-8930#a66>
