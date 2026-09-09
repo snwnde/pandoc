@@ -28,7 +28,7 @@ import Text.Pandoc.CSS (cssAttributes)
 import Text.Pandoc.Definition
 import Text.Pandoc.Class.PandocMonad (PandocMonad (..))
 import Text.Pandoc.Parsing
-  ( eof, lookAhead, many, many1, manyTill, option, optional
+  ( eof, lookAhead, many, many1, manyTill, notFollowedBy, option, optional
   , optionMaybe, skipMany, try )
 import Text.Pandoc.Readers.HTML.Parsing
 import Text.Pandoc.Readers.HTML.Types (TagParser)
@@ -134,7 +134,8 @@ pRow block = try $ do
   skipMany pBlank
   TagOpen _ attribs <- pSatisfy (matchTagOpen "tr" []) <* skipMany pBlank
   cells <- many (pCell block BodyCell <|> pCell block HeaderCell)
-  TagClose _ <- pSatisfy (matchTagClose "tr")
+  -- the closing tag may be omitted (it is optional in HTML):
+  optional $ pSatisfy (matchTagClose "tr")
   let numheadcells = length $ takeWhile (\(ct,_) -> ct == HeaderCell) cells
   return (numheadcells, Row (toAttr attribs) $ map snd cells)
 
@@ -145,9 +146,15 @@ pHeaderRow :: PandocMonad m
            -> TagParser m B.Row
 pHeaderRow block = try $ do
   skipMany pBlank
-  let pThs = many (snd <$> pCell block HeaderCell)
-  let mkRow (attribs, cells) = Row (toAttr attribs) cells
-  mkRow <$> pInTagWithAttribs TagsRequired "tr" pThs
+  TagOpen _ attribs <- pSatisfy (matchTagOpen "tr" [])
+  cells <- many (snd <$> pCell block HeaderCell)
+  skipMany pBlank
+  -- a header row may contain only <th> cells; a following <td>
+  -- means this is a body row, so we backtrack and let pRow parse it:
+  notFollowedBy $ pSatisfy (matchTagOpen "td" [])
+  -- the closing tag may be omitted (it is optional in HTML):
+  optional $ pSatisfy (matchTagClose "tr")
+  return $ Row (toAttr attribs) cells
 
 -- | Parses a table head. If there is no @thead@ element, this looks for
 -- a row of @<th>@-only elements as the first line of the table.
