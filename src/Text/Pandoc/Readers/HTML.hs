@@ -690,7 +690,9 @@ pCodeBlock = try $ do
   let modifyClasses f ("class",v) =
         ("class", T.unwords . map f . T.words $ v)
       modifyClasses _ (k,v) = (k,v)
-  let attr = toAttr $ map (modifyClasses stripLanguagePrefix) $ codeAttr <> attr'
+  -- pre's attributes take precedence (toAttr keeps the first of
+  -- duplicate attributes):
+  let attr = toAttr $ map (modifyClasses stripLanguagePrefix) $ attr' <> codeAttr
   contents <- manyTill pAny (pCloses "pre" <|> eof)
   let rawText = T.concat $ map tagToText contents
   -- drop trailing newline if any
