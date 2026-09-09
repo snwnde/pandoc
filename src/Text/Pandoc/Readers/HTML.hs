@@ -721,7 +721,10 @@ inline = pTagText <|> do
         "input"
           | lookup "type" attr == Just "checkbox"
           -> asks inListItem >>= guard >> pCheckbox
-        "style" -> B.rawInline "html" <$> pHtmlBlock "style"
+        "style"
+          | extensionEnabled Ext_raw_html exts
+          -> B.rawInline "html" <$> pHtmlBlock "style"
+          | otherwise -> pHtmlBlock "style" >>= ignore
         "script"
           | Just x <- lookup "type" attr
           , "math/tex" `T.isPrefixOf` x -> pScriptMath
