@@ -753,7 +753,7 @@ inline = pTagText <|> do
         "script"
           | Just x <- lookup "type" attr
           , "math/tex" `T.isPrefixOf` x -> pScriptMath
-        _ | name `elem` htmlSpanLikeElements -> pSpanLike
+        _ | name `Set.member` htmlSpanLikeElements -> pSpanLike name
         _ -> pRawHtmlInline
     TagText _ -> pTagText
     _ -> pRawHtmlInline
@@ -799,18 +799,12 @@ pSuperscript = pInlinesInTags "sup" B.superscript
 pSubscript :: PandocMonad m => TagParser m Inlines
 pSubscript = pInlinesInTags "sub" B.subscript
 
-pSpanLike :: PandocMonad m => TagParser m Inlines
-pSpanLike =
-  Set.foldr
-    (\tagName acc -> acc <|> parseTag tagName)
-    mzero
-    htmlSpanLikeElements
-  where
-    parseTag tagName = do
-      TagOpen _ attrs <- pSatisfy $ tagOpenLit tagName (const True)
-      let (ids, cs, kvs) = toAttr attrs
-      content <- mconcat <$> manyTill inline (pCloses tagName <|> eof)
-      return $ B.spanWith (ids, tagName : cs, kvs) content
+pSpanLike :: PandocMonad m => Text -> TagParser m Inlines
+pSpanLike tagName = do
+  TagOpen _ attrs <- pSatisfy $ tagOpenLit tagName (const True)
+  let (ids, cs, kvs) = toAttr attrs
+  content <- mconcat <$> manyTill inline (pCloses tagName <|> eof)
+  return $ B.spanWith (ids, tagName : cs, kvs) content
 
 pSmall :: PandocMonad m => TagParser m Inlines
 pSmall = pInlinesInTags "small" (B.spanWith ("",["small"],[]))
