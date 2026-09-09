@@ -415,10 +415,14 @@ pOrderedList = try $ do
   let start = fromMaybe 1 $ lookup "start" attribs >>= safeRead
   let style = fromMaybe DefaultStyle
          $  (parseTypeAttr      <$> lookup "type" attribs)
-        <|> (parseListStyleType <$> lookup "class" attribs)
+        <|> (lookup "class" attribs >>= pickClassStyle)
         <|> (parseListStyleType <$> (lookup "style" attribs >>= pickListStyle))
         where
           pickListStyle = pickStyleAttrProps ["list-style-type", "list-style"]
+          -- the list style may be one of several words in the class
+          -- attribute:
+          pickClassStyle = L.find (/= DefaultStyle)
+                             . map parseListStyleType . T.words
 
   -- note: if they have an <ol> or <ul> not in scope of a <li>,
   -- treat it as a list item, though it's not valid xhtml...
