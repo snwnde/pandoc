@@ -377,8 +377,9 @@ pListItem = setInListItem $ do
 
 pCheckbox :: PandocMonad m => TagParser m Inlines
 pCheckbox = do
-  TagOpen _ attr' <- pSatisfy $ matchTagOpen "input" [("type","checkbox")]
-  TagClose _ <- pSatisfy (matchTagClose "input")
+  -- <input> is a void element, so the closing tag is optional
+  TagOpen _ attr' <- pSelfClosing (=="input")
+                       (\as -> lookup "type" as == Just "checkbox")
   let attr = toStringAttr attr'
   let isChecked = isJust $ lookup "checked" attr
   let escapeSequence = B.str $ if isChecked then "\9746" else "\9744"
